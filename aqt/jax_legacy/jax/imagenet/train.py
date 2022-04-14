@@ -137,7 +137,7 @@ def step_decay(lr, step, interval):
 
 
 def create_learning_rate_fn(base_learning_rate, steps_per_epoch, lr_scheduler,
-                            batch_size):
+                            batch_size, multiplier=1.0):
   """Create learning rate scheduler function."""
   num_epochs = lr_scheduler.num_epochs
   warmup_steps = lr_scheduler.warmup_epochs * steps_per_epoch
@@ -173,7 +173,7 @@ def create_learning_rate_fn(base_learning_rate, steps_per_epoch, lr_scheduler,
     if cooldown_steps > 0:
       cooldown = jnp.minimum(1., (total_steps - step) / cooldown_steps)
       lr *= cooldown
-    return lr
+    return lr * multiplier
 
   return step_fn
 
@@ -355,18 +355,34 @@ def main(argv):
 
   mutable_vars, params = variables.pop('params')
   base_learning_rate = hparams.base_learning_rate * batch_size / 256.
-  learning_rate_fn = create_learning_rate_fn(base_learning_rate,
-                                             steps_per_epoch,
-                                             hparams.lr_scheduler,
-                                             batch_size)
+  learning_rate_fn = [
+    create_learning_rate_fn(base_learning_rate, steps_per_epoch, hparams.lr_scheduler, batch_size, multiplier=0.1),
+    create_learning_rate_fn(base_learning_rate, steps_per_epoch, hparams.lr_scheduler, batch_size),
+    ]
+  param_label = ['bn_param', 'others']
+  def label_fn(param_dict):
+      flat_param_dict = flax.traverse_util.flatten_dict(param_dict)
+      for k, _ in flat_param_dict.items():
+          entire_key = ' '.join(k)
+          if 'bn' in entire_key and ('scale' in entire_key or 'bias' in entire_key):
+              flat_param_dict[k] = param_label[0]
+          else:
+              flat_param_dict[k] = param_label[1]
+      unflatten_param_dict = flax.traverse_util.unflatten_dict(flat_param_dict)
+      return unflatten_param_dict
+
   if hparams.optimizer == 'sgd':
-    tx = optax.sgd(learning_rate=learning_rate_fn,
+    tx = optax.sgd(learning_rate=learning_rate_fn[1],
                    momentum=hparams.momentum,
                    nesterov=True)
   elif hparams.optimizer == 'adam':
-    tx = optax.adam(learning_rate=learning_rate_fn,
-                    b1=hparams.adam.beta1,
-                    b2=hparams.adam.beta2)
+    print("Use multi-transform.")
+    tx = optax.multi_transform(
+            {
+                param_label[0]: optax.adam(learning_rate=learning_rate_fn[0], b1=hparams.adam.beta1, b2=hparams.adam.beta2),  # optimizer for batchnorm params
+                param_label[1]: optax.adam(learning_rate=learning_rate_fn[1], b1=hparams.adam.beta1, b2=hparams.adam.beta2),  # optimizer for other params
+            },
+            label_fn)
   else:
     raise ValueError('Optimizer type is not supported.')
   state = imagenet_train_utils.TrainState.create(
@@ -383,7 +399,7 @@ def main(argv):
       functools.partial(
           imagenet_train_utils.train_step,
           model,
-          learning_rate_fn=learning_rate_fn,
+          learning_rate_fn=learning_rate_fn[0],
           teacher=teacher),
       axis_name='batch',
       static_broadcasted_argnums=(2, 3, 4))
