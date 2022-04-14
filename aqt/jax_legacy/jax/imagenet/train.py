@@ -80,6 +80,10 @@ flags.DEFINE_integer(
 
 flags.DEFINE_bool('cache', default=False, help=('If True, cache the dataset.'))
 
+flags.DEFINE_string(
+    'resnet508b_ckpt_path',
+    default=None,
+    help=('Path to the checkpoint directory of ResNet508b as a teacher model.'))
 
 flags.DEFINE_bool(
     'half_precision',
