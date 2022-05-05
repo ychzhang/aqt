@@ -48,6 +48,7 @@ def get_base_config(use_auto_acts: bool) -> ml_collections.ConfigDict:
           "knee_lr": float_ph(),
           "knee_epochs": int_ph(),
       },
+      "lr_multiplier": float_ph(),
       "optimizer": str_ph(),
       "adam": {
           "beta1": float_ph(),

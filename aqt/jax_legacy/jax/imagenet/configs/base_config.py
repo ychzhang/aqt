@@ -121,6 +121,7 @@ def get_base_config(imagenet_type: ImagenetType, quant_target: QuantTarget):
           "knee_lr": 1e-5,
           "knee_epochs": 125,
       },
+      "lr_multiplier": 1.0,
       "optimizer": "sgd",
       "adam": {
           "beta1": 0.9,

@@ -68,7 +68,7 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
       residual_block.conv_se.quant_act.bounds.initial_bound = -1
       residual_block.conv_se.quant_act.bounds.mean_of_max_coeff = 1.0
       residual_block.conv_se.weight_prec = bits
-      residual_block.conv_se.quant_act.prec = bits
+      residual_block.conv_se.quant_act.prec = None
       residual_block.conv_se.weight_half_shift = False
       residual_block.conv_se.quant_act.half_shift = False
       if residual_block.conv_proj is not None:
@@ -76,7 +76,7 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
         residual_block.conv_proj.quant_act.bounds.initial_bound = -1
         residual_block.conv_proj.quant_act.bounds.mean_of_max_coeff = 1.0
         residual_block.conv_proj.weight_prec = bits
-        residual_block.conv_proj.quant_act.prec = bits
+        residual_block.conv_proj.quant_act.prec = None
         residual_block.conv_proj.weight_half_shift = False
         residual_block.conv_proj.quant_act.half_shift = False
     return config
@@ -88,11 +88,11 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
   config_init.teacher_model = "resnet50-8bit"
   config_init.is_teacher = False
   config_init.weight_prec = 1
-  config_init.quant_act.prec = 1
+  config_init.quant_act.prec = None
   config_init.half_shift = True
   config_init.base_learning_rate = 2e-5
-  config_init.activation_bound_start_step = 7500
-  config_init.weight_quant_start_step = 50
+  config_init.activation_bound_start_step = 2340
+  config_init.weight_quant_start_step = 15
   config_init.weight_decay = 5e-5
   # set act function and shortcut method to each conv layer
   config_init.act_function = "none"
@@ -100,11 +100,11 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
   config_init.shortcut_ch_expand_method = "none"
   config_init.shortcut_spatial_method = "none"
   # set learning rate scheduler
-  config_init.lr_scheduler.num_epochs = 800
+  config_init.lr_scheduler.num_epochs = 46
   config_init.lr_scheduler.warmup_epochs = 0
   config_init.lr_scheduler.cooldown_epochs = 0
   config_init.lr_scheduler.scheduler = "piecewise"
-  config_init.lr_scheduler.knee_epochs = 750
+  config_init.lr_scheduler.knee_epochs = 45
   config_init.lr_scheduler.knee_lr = 0.0
   config_init.lr_scheduler.endlr = 0.0
   # -1 means no early stopping by default
@@ -115,9 +115,9 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
   config_init.adam.beta2 = 0.99
   # Conv_init and dense layers will have floating-point weights and acts
   config_init.model_hparams.conv_init.weight_prec = 8
-  config_init.model_hparams.conv_init.quant_act.prec = 8
+  config_init.model_hparams.conv_init.quant_act.prec = None
   config_init.model_hparams.dense_layer.weight_prec = 8
-  config_init.model_hparams.dense_layer.quant_act.prec = 8
+  config_init.model_hparams.dense_layer.quant_act.prec = None
   # set all of the input distributions to "symmetric"
   config_init.model_hparams.dense_layer.quant_act.input_distribution = "symmetric"
   config_init.model_hparams.conv_init.quant_act.input_distribution = "symmetric"
@@ -143,13 +143,14 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
   configs = []
 
   # sweep filter multiplier
-  for init_group in [32]:
+  for lr_multiplier in [1.0]:
     for shortcut_spatial_method in ["avg_pool"]:
       for shortcut_shrink_method in ["consecutive"]:
         for shortcut_expand_method in ["zeropad"]:
           config = copy.deepcopy(config_init)
+          config.lr_multiplier = lr_multiplier
           config.model_hparams.filter_multiplier = 1.0
-          config.model_hparams.init_group = init_group
+          config.model_hparams.init_group = 32
           config.model_hparams.se_ratio = 0.125
           config.act_function = "bprelu"
           config.quant_act.bounds.fixed_bound = 3.0
@@ -161,9 +162,6 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
           config = reset_bound_for_convinit_dense(config)
           config.metadata.hyper_str = "sweep_pokebnn"
           configs.append(config)
-
-  # w4a4_init8_dense8 model
-  configs.append(resnet50_w4_a4_init8_dense8_auto.get_config())
 
   sweep_config.configs = configs
   return sweep_config

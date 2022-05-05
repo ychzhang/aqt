@@ -46,6 +46,7 @@ from flax.optim import dynamic_scale as dynamic_scale_lib
 from flax.training import checkpoints
 from flax.training import common_utils
 import jax
+import flax
 from jax import random
 import jax.nn
 import jax.numpy as jnp
@@ -53,6 +54,7 @@ from ml_collections import config_flags
 import optax
 import tensorflow.compat.v2 as tf
 from tensorflow.io import gfile
+import bop
 
 
 COMPUTE_MEMORY_COST_FILENAME = 'compute_memory_cost.json'
@@ -188,6 +190,27 @@ def create_learning_rate_fn(base_learning_rate, steps_per_epoch, lr_scheduler,
   return step_fn
 
 
+def lr_multiplier_fn(step_fn, hparams):
+  def wrap_fn(step):
+      return step_fn(step) * hparams.lr_multiplier
+  return wrap_fn
+
+
+def create_param_labels(params: flax.core.frozen_dict.FrozenDict):
+    temp, param_labels = {}, {}
+    for k, v in flax.traverse_util.flatten_dict(params).items():
+        key_string = ' '.join(k)
+        if 'conv-resblock' in key_string:
+            param_labels[k] = 'binary'
+            temp[k] = jnp.sign(v)
+        else:
+            param_labels[k] = 'others'
+            temp[k] = v
+    param_labels = flax.traverse_util.unflatten_dict(param_labels)
+    temp = flax.traverse_util.unflatten_dict(temp)
+    return flax.core.frozen_dict.freeze(param_labels), flax.core.frozen_dict.freeze(temp)
+
+
 # flax.struct.dataclass enables instances of this class to be passed into jax
 # transformations like tree_map and pmap.
 def estimate_compute_and_memory_cost(image_size, model_dir, hparams) -> None:
@@ -286,7 +309,7 @@ def main(argv):
   if jax.host_id() == 0:
     summary_writer = tensorboard.SummaryWriter(FLAGS.model_dir)
 
-  image_size = 224
+  image_size = 64
 
   batch_size = FLAGS.batch_size
   if batch_size % jax.device_count() > 0:
@@ -415,6 +438,20 @@ def main(argv):
     tx = optax.adam(learning_rate=learning_rate_fn,
                     b1=hparams.adam.beta1,
                     b2=hparams.adam.beta2)
+  elif hparams.optimizer == 'multi':
+    logging.info(f"Use optax multi_transform. BN learning rate multiplier = {hparams.lr_multiplier}")
+    param_labels, params = create_param_labels(params)
+    tx = optax.multi_transform(
+        {
+            'bn': optax.adam(learning_rate=lr_multiplier_fn(learning_rate_fn, hparams),
+                    b1=hparams.adam.beta1,
+                    b2=hparams.adam.beta2),
+            'others': optax.adam(learning_rate=learning_rate_fn,
+                    b1=hparams.adam.beta1,
+                    b2=hparams.adam.beta2),
+        },
+        param_labels
+    )
   else:
     raise ValueError('Optimizer type is not supported.')
   state = imagenet_train_utils.TrainState.create(
@@ -455,6 +492,25 @@ def main(argv):
     # The function should take hparams.weight_quant_start_step as inputs
     quantize_weights = train_utils.should_quantize_weights(
         hparams.weight_quant_start_step, step // steps_per_epoch)
+    #####
+    # Switch to BOP during the middle of the training
+    # TODO: initialize BOP state from Adam correctly
+    #####
+    if step == 3900:
+        logging.info(f"Switch to optax multi_transform at epoch {step//156}. Use AdaBOP for binary kernels.")
+        state = jax_utils.unreplicate(state)
+        param_labels, binarized_params = create_param_labels(state.params)
+        binary_tx = optax.multi_transform(
+            {
+                'binary': bop.adabop(tau=1e-4, gamma1=10e-4, gamma2=10e-4),
+                'others': optax.adam(learning_rate=learning_rate_fn,
+                        b1=hparams.adam.beta1,
+                        b2=hparams.adam.beta2),
+            },
+            param_labels
+        )
+        state = state.replace(params=binarized_params, tx=binary_tx, opt_state=binary_tx.init(binarized_params))
+        state = jax_utils.replicate(state)
     state, metrics = p_train_step(state, batch, hparams, update_bounds,
                                   quantize_weights)
 

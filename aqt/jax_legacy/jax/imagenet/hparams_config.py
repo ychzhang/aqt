@@ -53,6 +53,7 @@ class TrainingHParams:
   momentum: float  # only used when optimier=='sgd'
   weight_decay: float
   lr_scheduler: LrScheduler
+  lr_multiplier: float
   optimizer: str
   adam: Adam  # only used when optimizer=='adam'
   early_stop_steps: int
