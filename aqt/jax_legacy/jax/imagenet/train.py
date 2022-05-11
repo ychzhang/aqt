@@ -497,15 +497,13 @@ def main(argv):
     # TODO: initialize BOP state from Adam correctly
     #####
     if step == 3900:
-        logging.info(f"Switch to optax multi_transform at epoch {step//156}. Use AdaBOP for binary kernels.")
+        logging.info(f"Switch to optax multi_transform at epoch {step//156}. Use AdaBOP for binary kernels. tau={hparams.bop.tau}, gamma1={hparams.bop.gamma1}, gamma2={hparams.bop.gamma2}")
         state = jax_utils.unreplicate(state)
         param_labels, binarized_params = create_param_labels(state.params)
         binary_tx = optax.multi_transform(
             {
-                'binary': bop.adabop(tau=1e-4, gamma1=10e-4, gamma2=10e-4),
-                'others': optax.adam(learning_rate=learning_rate_fn,
-                        b1=hparams.adam.beta1,
-                        b2=hparams.adam.beta2),
+                'binary': bop.adabop(tau=hparams.bop.tau, gamma1=hparams.bop.gamma1, gamma2=hparams.bop.gamma2),
+                'others': optax.sgd(learning_rate=0),
             },
             param_labels
         )

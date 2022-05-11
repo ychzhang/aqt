@@ -143,12 +143,13 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
   configs = []
 
   # sweep filter multiplier
-  for lr_multiplier in [1.0]:
-    for shortcut_spatial_method in ["avg_pool"]:
+  for tau in [5e-2, 20e-2, 100e-2]:
+    for gamma1 in [2e-4, 10e-4, 50e-4]:
       for shortcut_shrink_method in ["consecutive"]:
         for shortcut_expand_method in ["zeropad"]:
           config = copy.deepcopy(config_init)
-          config.lr_multiplier = lr_multiplier
+          config.bop.tau = tau
+          config.bop.gamma1 = gamma1
           config.model_hparams.filter_multiplier = 1.0
           config.model_hparams.init_group = 32
           config.model_hparams.se_ratio = 0.125
@@ -156,7 +157,28 @@ def get_config(quant_target=base_config.QuantTarget.WEIGHTS_AND_AUTO_ACT):
           config.quant_act.bounds.fixed_bound = 3.0
           config.shortcut_ch_shrink_method = shortcut_shrink_method
           config.shortcut_ch_expand_method = shortcut_expand_method
-          config.shortcut_spatial_method = shortcut_spatial_method
+          config.shortcut_spatial_method = "avg_pool"
+          config = set_conv_proj_precision(config, 4)
+          # reset bound haparams for conv_init and dense layers
+          config = reset_bound_for_convinit_dense(config)
+          config.metadata.hyper_str = "sweep_pokebnn"
+          configs.append(config)
+
+  for tau in [5e-2, 20e-2, 100e-2]:
+    for gamma2 in [2e-4, 10e-4, 50e-4]:
+      for shortcut_shrink_method in ["consecutive"]:
+        for shortcut_expand_method in ["zeropad"]:
+          config = copy.deepcopy(config_init)
+          config.bop.tau = tau
+          config.bop.gamma2 = gamma2
+          config.model_hparams.filter_multiplier = 1.0
+          config.model_hparams.init_group = 32
+          config.model_hparams.se_ratio = 0.125
+          config.act_function = "bprelu"
+          config.quant_act.bounds.fixed_bound = 3.0
+          config.shortcut_ch_shrink_method = shortcut_shrink_method
+          config.shortcut_ch_expand_method = shortcut_expand_method
+          config.shortcut_spatial_method = "avg_pool"
           config = set_conv_proj_precision(config, 4)
           # reset bound haparams for conv_init and dense layers
           config = reset_bound_for_convinit_dense(config)

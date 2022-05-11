@@ -54,6 +54,11 @@ def get_base_config(use_auto_acts: bool) -> ml_collections.ConfigDict:
           "beta1": float_ph(),
           "beta2": float_ph()
       },
+      "bop": {
+          "tau": float_ph(),
+          "gamma1": float_ph(),
+          "gamma2": float_ph(),
+      },
       "early_stop_steps": int_ph(),
       "weight_quant_start_step": int_ph(),
       "teacher_model": str_ph(),

@@ -42,6 +42,13 @@ class Adam:
 
 
 @dataclass
+class Bop:
+  tau: float
+  gamma1: float
+  gamma2: float
+
+
+@dataclass
 class TrainingHParams:
   """Hyperparameters used for training."""
 
@@ -56,6 +63,7 @@ class TrainingHParams:
   lr_multiplier: float
   optimizer: str
   adam: Adam  # only used when optimizer=='adam'
+  bop: Bop
   early_stop_steps: int
   teacher_model: str
   is_teacher: bool

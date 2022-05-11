@@ -127,6 +127,11 @@ def get_base_config(imagenet_type: ImagenetType, quant_target: QuantTarget):
           "beta1": 0.9,
           "beta2": 0.999
       },
+      "bop": {
+          "tau": 20e-2,
+          "gamma1": 10e-4,
+          "gamma2": 10e-4,
+      },
       "early_stop_steps": -1,  # -1 means no early stop
       "weight_quant_start_step": 0,  # 0 means turned on by default
       "teacher_model": "labels",
